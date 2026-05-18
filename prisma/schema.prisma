@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+ }
+
+model User {
+  id         String   @id @default(uuid())
+  username   String   @unique
+  fullName   String
+  email      String   @unique
+  phone      String
+  role       String   
+  password   String
+  active     Boolean  @default(true)
+  dailyHours Int      @default(8)
+  allowedLat Float?   
+  allowedLng Float?   
+  createdAt  DateTime @default(now())
+  sales      Sale[]
+  closings   DailyClosing[]
+}
+
+model Supplier {
+  id        String     @id @default(uuid())
+  name      String
+  phones    Json       
+  address   String
+  medicines Medicine[]
+}
+
+model Medicine {
+  id                   String   @id @default(uuid())
+  name                 String
+  barcode              String   @unique
+  expiryDate           DateTime 
+  quantity             Int
+  purchasePrice        Float
+  sellingPrice         Float
+  requiresPrescription Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  supplierId           String?
+  supplier             Supplier? @relation(fields: [supplierId], references: [id])
+  saleItems            SaleItem[]
+}
+
+model Sale {
+  id            String   @id @default(uuid())
+  ts            DateTime @default(now())
+  total         Float
+  cost          Float
+  profit        Float
+  paymentMethod String   
+  cashierName   String
+  cashierId     String
+  cashier       User     @relation(fields: [cashierId], references: [id])
+  items         SaleItem[]
+}
+
+model SaleItem {
+  id           String   @id @default(uuid())
+  qty          Int
+  unitPrice    Float
+  unitCost     Float
+  medicineName String
+  saleId       String
+  sale         Sale     @relation(fields: [saleId], references: [id])
+  medicineId   String
+  medicine     Medicine @relation(fields: [medicineId], references: [id])
+}
+
+model ReturnSale {
+  id          String   @id @default(uuid())
+  saleId      String
+  ts          DateTime @default(now())
+  totalRefund Float
+  cashierId   String
+  cashierName String
+}
+
+model DailyClosing {
+  id          String   @id @default(uuid())
+  closedAt    DateTime @default(now())
+  date        String
+  totals      Json     
+  grandTotal  Float
+  salesCount  Int
+  closedByName String
+  closedById  String
+  closedBy    User     @relation(fields: [closedById], references: [id])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  ts          DateTime @default(now())
+  actorId     String
+  actorName   String
+  action      String
+  details     String?
+  severity    String   
+}
+
+model ManagerSecurity {
+  id             String  @id @default("1")
+  pinHash        String?
+  recoveryEmail  String
+  recoveryPhone  String
+  setupComplete  Boolean @default(false)
+}

@@ -24,6 +24,7 @@ router.get('/notifications', verifyToken, authorizeRoles('admin', 'pharmacist'),
     const alerts = [];
 
     medicines.forEach(med => {
+      med.quantity = parseFloat(med.quantity);
       // --- Stock alerts ---
       if (med.quantity === 0) {
         alerts.push({

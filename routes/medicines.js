@@ -21,8 +21,15 @@ router.get('/', verifyToken, authorizeRoles('admin', 'pharmacist'), async (req, 
       [limit, offset]
     );
 
+    const cleanedMedicines = medicines.map(med => ({
+      ...med,
+      quantity: parseFloat(med.quantity),
+      sellingPrice: parseFloat(med.sellingPrice),
+      purchasePrice: parseFloat(med.purchasePrice)
+    }));
+
     res.json({
-      data: medicines,
+      data: cleanedMedicines,
       pagination: {
         total,
         page,
@@ -40,6 +47,9 @@ router.get('/search/:barcode', verifyToken, authorizeRoles('admin', 'pharmacist'
   try {
     const [medicine] = await pool.query('SELECT * FROM Medicine WHERE barcode = ?', [req.params.barcode]);
     if (medicine.length === 0) return res.status(404).json({ error: 'الدواء غير موجود' });
+    medicine[0].quantity = parseFloat(medicine[0].quantity);
+    medicine[0].sellingPrice = parseFloat(medicine[0].sellingPrice);
+    medicine[0].purchasePrice = parseFloat(medicine[0].purchasePrice);
     res.json(medicine[0]);
   } catch (err) { res.status(500).json({ error: 'حدث خطأ في البحث' }); }
 });

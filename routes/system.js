@@ -263,61 +263,74 @@ router.get('/backup', verifyToken, authorizeRoles('admin'), async (req, res) => 
 });*/
 
 
-// =================== Safe Backup via NPM Package ===================
-// FIX: Platform-independent backup using 'mysqldump' npm package.
-// Works seamlessly on Railway, Windows, and Linux without OS dependencies.
+// =================== Ultimate Safe Backup (No external tools needed) ===================
+// FIX: Completely bypasses OS commands and buggy NPM packages.
+// Uses the existing verified DB pool to generate a full SQL dump manually.
 router.get('/backup', verifyToken, authorizeRoles('admin'), async (req, res) => {
   try {
-    const mysqldump = require('mysqldump');
-    const fs = require('fs');
-    const path = require('path');
-    const os = require('os');
-
-    const dbHost     = process.env.DB_HOST     || 'localhost';
-    const dbPort     = process.env.DB_PORT     || '3306';
-    const dbUser     = process.env.DB_USER     || 'root';
-    const dbPassword = process.env.DB_PASSWORD || '';
-    const dbName     = process.env.DB_NAME     || 'careplus';
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const filename  = `careplus_backup_${timestamp}.sql`;
+    // قائمة الجداول في قاعدة البيانات الخاصة بك
+    const tables = ['User', 'Medicine', 'Supplier', 'Sale', 'SaleItem', 'ReturnSale', 'Attendance', 'DailyClosing', 'AuditLog', 'ManagerSecurity'];
     
-    // إنشاء مسار آمن للملف المؤقت يتوافق مع ويندوز ولينكس (Railway)
-    const tempFilePath = path.join(os.tmpdir(), filename);
+    let sqlDump = `-- CarePlus Pharmacy Backup\n-- Date: ${new Date().toLocaleString('en-US')}\n\n`;
+    sqlDump += `SET FOREIGN_KEY_CHECKS=0;\n\n`; // لإيقاف فحص الروابط مؤقتاً أثناء الاسترجاع
 
-    // عملية استخراج البيانات
-    await mysqldump({
-      connection: {
-        host: dbHost,
-        port: parseInt(dbPort, 10),
-        user: dbUser,
-        password: dbPassword,
-        database: dbName,
-      },
-      dumpToFile: tempFilePath,
-    });
-
-    // إرسال الملف للمستخدم
-    res.download(tempFilePath, filename, (err) => {
-      if (err) {
-        console.error('Download error:', err.message);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'حدث خطأ أثناء تحميل الملف' });
-        }
+    for (const table of tables) {
+      // 1. جلب هيكل الجدول (Schema)
+      const [schemaRows] = await pool.query(`SHOW CREATE TABLE \`${table}\``);
+      if (schemaRows.length > 0) {
+        sqlDump += `-- --------------------------------------------------------\n`;
+        sqlDump += `-- Table structure for \`${table}\`\n`;
+        sqlDump += `-- --------------------------------------------------------\n`;
+        sqlDump += `DROP TABLE IF EXISTS \`${table}\`;\n`;
+        sqlDump += `${schemaRows[0]['Create Table']};\n\n`;
       }
-      
-      // تنظيف السيرفر: مسح الملف فوراً بعد الإرسال لتوفير المساحة
-      fs.unlink(tempFilePath, (unlinkErr) => {
-        if (unlinkErr) console.error('Cleanup error:', unlinkErr.message);
-      });
-    });
+
+      // 2. جلب بيانات الجدول (Data)
+      const [rows] = await pool.query(`SELECT * FROM \`${table}\``);
+      if (rows.length > 0) {
+        sqlDump += `-- Dumping data for table \`${table}\`\n`;
+        
+        for (const row of rows) {
+          const columns = Object.keys(row).map(c => `\`${c}\``).join(', ');
+          
+          const values = Object.values(row).map(val => {
+            if (val === null) return 'NULL';
+            if (typeof val === 'string') {
+              // حماية وتنظيف النصوص من علامات التنصيص
+              const escaped = val.replace(/\\/g, '\\\\').replace(/'/g, "''").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+              return `'${escaped}'`;
+            }
+            if (val instanceof Date) {
+              // تحويل التاريخ لصيغة تناسب MySQL
+              return `'${val.toISOString().slice(0, 19).replace('T', ' ')}'`;
+            }
+            if (typeof val === 'object') {
+              const escapedJson = JSON.stringify(val).replace(/\\/g, '\\\\').replace(/'/g, "''");
+              return `'${escapedJson}'`;
+            }
+            return val;
+          }).join(', ');
+          
+          sqlDump += `INSERT INTO \`${table}\` (${columns}) VALUES (${values});\n`;
+        }
+        sqlDump += `\n\n`;
+      }
+    }
+
+    sqlDump += `SET FOREIGN_KEY_CHECKS=1;\n`; // إعادة تفعيل الروابط
+
+    // إرسال الملف مباشرة كـ Stream بدون تخزينه على السيرفر
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `careplus_backup_${timestamp}.sql`;
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(sqlDump);
 
   } catch (err) {
     console.error('Backup Error:', err.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'حدث خطأ أثناء إنشاء النسخة الاحتياطية' });
-    }
+    res.status(500).json({ error: 'حدث خطأ أثناء إنشاء النسخة الاحتياطية' });
   }
-});
+});   
 
 module.exports = router;

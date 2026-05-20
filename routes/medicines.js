@@ -80,13 +80,53 @@ router.post('/', verifyToken, authorizeRoles('admin', 'pharmacist'), validateReq
   }
 });
 
-// تعديل دواء موجود
+// تعديل دواء موجود (ديناميكي لجميع الحقول)
 router.put('/:id', verifyToken, authorizeRoles('admin', 'pharmacist'), async (req, res) => {
   try {
-    const { quantity, sellingPrice } = req.body;
-    await pool.query('UPDATE Medicine SET quantity = ?, sellingPrice = ? WHERE id = ?', [quantity, sellingPrice, req.params.id]);
-    res.json({ message: 'تم التعديل بنجاح' });
-  } catch (err) { res.status(500).json({ error: 'حدث خطأ' }); }
+    const {
+      name, barcode, expiryDate, quantity, purchasePrice, sellingPrice,
+      requiresPrescription, supplierId, pillCount, stripCount, manufacturer,
+      genericName, medicineForm
+    } = req.body;
+
+    const fieldsToUpdate = {
+      name, barcode, expiryDate, quantity, purchasePrice, sellingPrice,
+      requiresPrescription, supplierId, pillCount, stripCount, manufacturer,
+      genericName, medicineForm
+    };
+
+    const updates = [];
+    const values = [];
+
+    for (const [key, value] of Object.entries(fieldsToUpdate)) {
+      if (value !== undefined) {
+        updates.push(`${key} = ?`);
+        values.push(value);
+      }
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'لم يتم إرسال أي بيانات للتحديث' });
+    }
+
+    values.push(req.params.id);
+
+    const sql = `UPDATE Medicine SET ${updates.join(', ')} WHERE id = ?`;
+    
+    const [result] = await pool.query(sql, values);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'الدواء غير موجود في النظام' });
+    }
+
+    res.json({ message: 'تم تعديل بيانات الدواء بنجاح' });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ error: 'الباركود الجديد مسجل مسبقاً لدواء آخر' });
+    }
+    console.error('Update Error:', err);
+    res.status(500).json({ error: 'حدث خطأ أثناء التعديل' });
+  }
 });
 
 // مسح دواء

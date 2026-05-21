@@ -142,7 +142,6 @@ router.delete('/:id', verifyToken, authorizeRoles('admin', 'pharmacist'), async 
 });
 
 // =================== Task 4: Axios Timeout on Generic Suggestions ===================
-// FIX: Added a strict 5000ms timeout to the axios request.
 // Timeout errors are caught separately and return a descriptive Arabic message.
 router.get('/generic-suggestions', verifyToken, authorizeRoles('admin', 'pharmacist'), async (req, res) => {
   try {

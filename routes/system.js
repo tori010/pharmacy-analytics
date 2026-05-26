@@ -170,7 +170,7 @@ router.get('/logs', verifyToken, authorizeRoles('admin'), async (req, res) => {
 
     const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM AuditLog');
     const [logs] = await pool.query(
-      'SELECT * FROM AuditLog ORDER BY timestamp DESC LIMIT ? OFFSET ?',
+      'SELECT * FROM AuditLog ORDER BY ts DESC LIMIT ? OFFSET ?',
       [limit, offset]
     );
 
